@@ -33,6 +33,7 @@ func DaemonSet(
 	instance *v1beta1.OVS,
 	configHash string,
 	labels map[string]string,
+	annotations map[string]string,
 ) (*appsv1.DaemonSet, error) {
 
 	runAsUser := int64(0)
@@ -78,15 +79,14 @@ func DaemonSet(
 	envVars["OvnBridge"] = env.SetValue(instance.Spec.ExternalIDS.OvnBridge)
 	envVars["OvnRemote"] = env.SetValue(dbmap["SB"])
 	envVars["OvnEncapType"] = env.SetValue(instance.Spec.ExternalIDS.OvnEncapType)
+	// TODO
+	envVars["PodNamespace"] = env.SetValue(instance.Namespace)
+	envVars["PodNetworksStatus"] = EnvDownwardAPI("metadata.annotations['k8s.v1.cni.cncf.io/networks-status']")
+	envVars["OvnEncapNetwork"] = env.SetValue("internalapi")
 	envVars["OvnEncapIP"] = EnvDownwardAPI("status.podIP")
 	envVars["EnableChassisAsGateway"] = env.SetValue(fmt.Sprintf("%t", instance.Spec.ExternalIDS.EnableChassisAsGateway))
 	envVars["PhysicalNetworks"] = env.SetValue(getPhysicalNetworks(instance))
 	envVars["OvnHostName"] = EnvDownwardAPI("spec.nodeName")
-
-	networkList, err := getNetworksList(instance)
-	if err != nil {
-		return nil, err
-	}
 
 	daemonset := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -99,10 +99,8 @@ func DaemonSet(
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
-					Annotations: map[string]string{
-						"k8s.v1.cni.cncf.io/networks": networkList,
-					},
+					Labels:      labels,
+					Annotations: annotations,
 				},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: ServiceAccountName,
@@ -111,16 +109,10 @@ func DaemonSet(
 						{
 							Name: ServiceName + "db-server",
 							Command: []string{
-								"/usr/local/bin/container-scripts/start-ovsdb-server.sh",
+								"/usr/bin/start-ovs",
 							},
-							Lifecycle: &corev1.Lifecycle{
-								PreStop: &corev1.LifecycleHandler{
-									Exec: &corev1.ExecAction{
-										Command: []string{
-											"/usr/share/openvswitch/scripts/ovs-ctl", "stop", "--no-ovs-vswitchd",
-										},
-									},
-								},
+							Args: []string{
+								"ovsdb-server",
 							},
 							Image: instance.Spec.OvsContainerImage,
 							SecurityContext: &corev1.SecurityContext{
@@ -140,19 +132,10 @@ func DaemonSet(
 							// ovs-vswitchd container
 							Name: ServiceName + "-vswitchd",
 							Command: []string{
-								"/usr/sbin/ovs-vswitchd",
+								"/usr/bin/start-ovs",
 							},
 							Args: []string{
-								"--pidfile", "--mlockall",
-							},
-							Lifecycle: &corev1.Lifecycle{
-								PreStop: &corev1.LifecycleHandler{
-									Exec: &corev1.ExecAction{
-										Command: []string{
-											"/usr/share/openvswitch/scripts/ovs-ctl", "stop", "--no-ovsdb-server",
-										},
-									},
-								},
+								"ovs-vswitchd",
 							},
 							Image: instance.Spec.OvsContainerImage,
 							SecurityContext: &corev1.SecurityContext{
@@ -176,16 +159,7 @@ func DaemonSet(
 							},
 							Args: []string{
 								// First configure external ids and then start ovn controller
-								"/usr/local/bin/container-scripts/init.sh && ovn-controller --pidfile unix:/run/openvswitch/db.sock",
-							},
-							Lifecycle: &corev1.Lifecycle{
-								PreStop: &corev1.LifecycleHandler{
-									Exec: &corev1.ExecAction{
-										Command: []string{
-											"/usr/share/ovn/scripts/ovn-ctl", "stop_controller",
-										},
-									},
-								},
+								"/usr/local/bin/container-scripts/init.sh && /usr/bin/ovn-controller --pidfile --log-file unix:/run/openvswitch/db.sock",
 							},
 							Image: instance.Spec.OvnContainerImage,
 							// TODO(slaweq): to check if ovn-controller really needs such security contexts
