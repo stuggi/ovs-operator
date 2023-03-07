@@ -79,10 +79,11 @@ func DaemonSet(
 	envVars["OvnBridge"] = env.SetValue(instance.Spec.ExternalIDS.OvnBridge)
 	envVars["OvnRemote"] = env.SetValue(dbmap["SB"])
 	envVars["OvnEncapType"] = env.SetValue(instance.Spec.ExternalIDS.OvnEncapType)
-	envVars["PodNamespace"] = env.SetValue(instance.Namespace)
-	envVars["PodNetworksStatus"] = EnvDownwardAPI("metadata.annotations['k8s.v1.cni.cncf.io/networks-status']")
-	envVars["OvnEncapNetwork"] = env.SetValue(instance.Spec.NetworkAttachment)
-	envVars["OvnEncapIP"] = EnvDownwardAPI("status.podIP")
+	if instance.Spec.NetworkAttachment == "" {
+		envVars["OvnEncapNIC"] = env.SetValue("eth0")
+	} else {
+		envVars["OvnEncapNIC"] = env.SetValue("net1")
+	}
 	envVars["EnableChassisAsGateway"] = env.SetValue(fmt.Sprintf("%t", instance.Spec.ExternalIDS.EnableChassisAsGateway))
 	envVars["PhysicalNetworks"] = env.SetValue(getPhysicalNetworks(instance))
 	envVars["OvnHostName"] = EnvDownwardAPI("spec.nodeName")
