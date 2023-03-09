@@ -18,6 +18,7 @@ import (
 
 	"github.com/openstack-k8s-operators/lib-common/modules/common/env"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/helper"
+	nad "github.com/openstack-k8s-operators/lib-common/modules/common/networkattachment"
 	"github.com/openstack-k8s-operators/ovs-operator/api/v1beta1"
 
 	ovnclient "github.com/openstack-k8s-operators/ovn-operator/api/v1beta1"
@@ -82,7 +83,7 @@ func DaemonSet(
 	if instance.Spec.NetworkAttachment == "" {
 		envVars["OvnEncapNIC"] = env.SetValue("eth0")
 	} else {
-		envVars["OvnEncapNIC"] = env.SetValue("net1")
+		envVars["OvnEncapNIC"] = env.SetValue(nad.GetNetworkIFName(instance.Spec.NetworkAttachment))
 	}
 	envVars["EnableChassisAsGateway"] = env.SetValue(fmt.Sprintf("%t", instance.Spec.ExternalIDS.EnableChassisAsGateway))
 	envVars["PhysicalNetworks"] = env.SetValue(getPhysicalNetworks(instance))
